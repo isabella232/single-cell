@@ -62,10 +62,10 @@ upload files from local storage to AWS. These features will extend the existing 
 
 The DP Backend is responsible for handling API requests. It will generate pre-signed URLs and access tokens
 for the DP Browser App to facilitate the uploading of files. It will also enqueue shared links for downloading.
-This additional functionality can be built into the existing DP Backend Lambda. 
+This additional functionality can be built into the existing DP Backend Lambda.
 
 The backend will also be responsible for performing validation of the file being uploaded. The validation is
-performed during the initial request to upload. 
+performed during the initial request to upload.
 
 #### Download Queue
 
@@ -80,7 +80,7 @@ These are the fields that will be in the download job placed in the queue:
 - submission_id - identifies the submission. Used to determine the storage location.
 - dataset_id - identifies the dataset. Used to determine the storage location
 - file_name - the name of the file being downloaded
-- attestation - 
+- attestation -
 
 #### AWS STS
 
@@ -162,34 +162,34 @@ section.
 
 #### PUT submission/{submission_id}/upload/link
 
-An authenticated user can upload a file from a shared link to a data set in their submission. 
+An authenticated user can upload a file from a shared link to a data set in their submission.
 
-If the upload is in an error state, this endpoint can be used with the dataset_id to restart the submission. If a new 
-link is provided, the new link will be used. If the submissions is not in an error state, or is complete, this endpoint 
+If the upload is in an error state, this endpoint can be used with the dataset_id to restart the submission. If a new
+link is provided, the new link will be used. If the submissions is not in an error state, or is complete, this endpoint
 will return the current status of the submission.
 
 **Request:**
 
-| Parameter     | Description                                               |
-| ------------- | --------------------------------------------------------- |
-| Link          | a shared link to the file                                 |
-| submission_id | identifies the submission                                 |
-| attestation   | A boolean value indicating if the file is for attestation |
-| _Optional_ dataset_id | identifies the dataset being uploaded. Used to check status of upload|
+| Parameter             | Description                                                           |
+| --------------------- | --------------------------------------------------------------------- |
+| Link                  | a shared link to the file                                             |
+| submission_id         | identifies the submission                                             |
+| attestation           | A boolean value indicating if the file is for attestation             |
+| _Optional_ dataset_id | identifies the dataset being uploaded. Used to check status of upload |
 
 **Response:**
 
 | Key        | Description                                                                |
 | ---------- | -------------------------------------------------------------------------- |
 | dataset_id | identifies the data set the file will be associated with after validation. |
-| status     | Provides the current status of the upload			  |
+| status     | Provides the current status of the upload                                  |
 
 **Error Responses:**
 
 | Code | Description                                                                                                             |
 | ---- | ----------------------------------------------------------------------------------------------------------------------- |
 | 401  | if dataset_id or submission_id does not exist, or if the user does not own the submission or upload in-progress upload. |
-| 400  | if the file type is invalid                                                                                            |
+| 400  | if the file type is invalid                                                                                             |
 
 #### POST submission/{submission_id}/upload/file
 
@@ -219,31 +219,32 @@ If the size of the file is >100MB, then an access token will be returned.
 | Access Token  | allows the user to upload their file to S3 in multiple parts. |
 | Presigned URL | allows the user to upload their file to S3 in a single part.  |
 | dataset_id    | identifies the name of the new file created.                  |
-| status     | Provides the current status of the upload.			  |
+| status        | Provides the current status of the upload.                    |
 
 **Error Responses:**
 
 | Code | Description                                                                                                             |
 | ---- | ----------------------------------------------------------------------------------------------------------------------- |
 | 401  | if dataset_id or submission_id does not exist, or if the user does not own the submission or upload in-progress upload. |
-| 400  | if the file type is invalid                                                                                            |
+| 400  | if the file type is invalid                                                                                             |
 
 #### Upload States
 
-When uploading a file it is important to know what state the upload is in. The API documentation returns a *status* in 
+When uploading a file it is important to know what state the upload is in. The API documentation returns a _status_ in
 response. This status informs the user the current state of the upload. An upload follows this state diagram:
 
 ![Upload States](https://app.lucidchart.com/publicSegments/view/5fe0858f-eb93-4b64-9842-6f25cad371f3/image.png)
 Figure 2: Upload State Diagram
 
 The states are describes as follow:
+
 - Uploading: The file is actively being uploaded.
 - Error: the upload as failed. A new link or file must be uploaded.
 - Waiting: The link is in the download queue.
 - Complete: The upload was completed successfully
 - Canceled: The upload has been canceled by the user.
 
-These states will need to be stores in a database or table until the upload is complete. This could be in the existing 
+These states will need to be stores in a database or table until the upload is complete. This could be in the existing
 postgresSQL database or a simple key, value storage system like DynamoDB.
 
 ### Upload Flows
@@ -302,21 +303,20 @@ An EC2 instance, docker container, or AWS lambda can be used to complete this ta
 
 ##### 6. Stream File
 
-The shared link is used to stream the file from one cloud to another. The most time will be spent streaming the file 
+The shared link is used to stream the file from one cloud to another. The most time will be spent streaming the file
 from the CSP to S3. Most CSPs offer a way to validate the integrity of a download
 by providing a hash of the data, for example [Dropbox Content Hash](https://www.dropbox.com/developers/reference/content-hash).
-As the data is streaming from the CSP, the hash of the file will be calculated as it arrives, and again as it's 
+As the data is streaming from the CSP, the hash of the file will be calculated as it arrives, and again as it's
 uploaded to S3. The [Content-MD5 header](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax)
 will be used when uploading to S3 to verify the integrity of each chunk. The AWS SDK will be useful in simplifying the
 upload to S3.
 
-Once the upload is complete, the download job will be removed from the queue. If the final hash does not match, then 
+Once the upload is complete, the download job will be removed from the queue. If the final hash does not match, then
 the upload process will be restarted. The retry logic will be an exponential back off, with a max retry of 5 times.
 
 > QUESTION? Do we need to tell the user or the DB when the file is done do uploading? This makes me think we need an endpoint
 > to finalize the upload. The endpoint will look for the expected file, and if it's found, update the database with the file
 > info.
-
 > TODO: How do we log when a download fails, and how is that propagated to the user.
 
 #### Local to Cloud Flow
@@ -342,7 +342,7 @@ multipart upload is started using the AWS SDK. If a pre-signed URL is returned a
 The implementation uses an access token and the AWS JS SDK to upload the file directly to S3. The hash of each chunk must be  
 calculated locally and supplied in the [Content-MD5 header](https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html#API_PutObject_RequestSyntax)
 as part of Put Object request. This will verify the integrity of each chunk during the upload. If the hash does not match
-the chunk will be rejected. The AWS S3 API will do the heavy lifting as far as managing the [multipart upload](https://docs.aws.amazon.com/AmazonS3/latest/dev/uploadobjusingmpu.html). 
+the chunk will be rejected. The AWS S3 API will do the heavy lifting as far as managing the [multipart upload](https://docs.aws.amazon.com/AmazonS3/latest/dev/uploadobjusingmpu.html).
 The access token will provide sufficient permissions to allow a multipart upload using AWS JS SDK.
 
 ##### User Upload Limitation
