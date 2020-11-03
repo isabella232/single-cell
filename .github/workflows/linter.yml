@@ -45,6 +45,7 @@ jobs:
         run: |
           mkdir .github/linters/
           ln -sf .markdownlint.json .github/linters/.markdownlint.json
+          cat .github/linters/.markdownlint.json
 
       ################################
       # Run Linter against code base #
