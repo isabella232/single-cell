@@ -41,6 +41,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v2
 
+      - name: Create symlink for .markdownlint.json
+        run: |
+          mkdir .github/linters/
+          ln -sf .markdownlint.json .github/linters/.markdownlint.json
+
       ################################
       # Run Linter against code base #
       ################################
