@@ -44,8 +44,11 @@ jobs:
       - name: Create symlink for .markdownlint.json
         run: |
           mkdir .github/linters/
+          mkdir -p /action/lib/.automation/
           ln -sf "$(pwd)/.markdownlint.json" "$(pwd)/.github/linters/.markdownlint.json"
+          ln -sf "$(pwd)/.markdownlint.json" "$(pwd)/action/lib/.automation/.markdownlint.json"
           cat "$(pwd)/.github/linters/.markdownlint.json"
+          cat "$(pwd)/action/lib/.automation/.markdownlint.json"
 
       ################################
       # Run Linter against code base #
