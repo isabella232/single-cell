@@ -11,7 +11,6 @@ We need to decompose our system a little bit. Right now we have poorly defined i
 
 ## Problem Statement
 
-
 #### Current Architecture
 
 ![Current Architecture](imgs/current_architecture.svg)
@@ -110,3 +109,7 @@ of that away.
 
 The page is ~500kb worth of requests, and it's just absurd. I think Cloudfront actually makes it worse. You get a better median because of CDN cache hits, but
 then that lambdas get cold, and the tail is so slow. Chalice is probably not the framework for our access patterns.
+
+## Proposed Architecture
+
+![Proposed Architecture](imgs/proposed_architecture.svg)
