@@ -1,8 +1,6 @@
 # cellxgene Architecture Roadmap
 
 
-## [Optional] Subtitle of my design 
-
 **Authors:** [Marcus Kinsella](mailto:mkinsella@chanzuckerberg.com)
 
 **Approvers:**
@@ -102,7 +100,7 @@ Previously, many requests from the Explorer could be served out of the in-memory
 straightforward because the underlying data was immutable, so no invalidation logic was needed, and we could scale horizontally without introducing much
 complexity.
 
-With user annotations enables, the underlying data is not longer immutable. So now most requests require a full round trip to the database because there's never
+With user annotations enabled, the underlying data is no longer immutable. So now most requests require a full round trip to the database because there's never
 any way to know that a cached response is still valid. And reasoning about horizontal scaling is much harder, as we need to handle data consistency.
 
 User annotations is a key new feature for the Explorer, but the core value proposition has always been performance, and we should work hard to avoid trading any
