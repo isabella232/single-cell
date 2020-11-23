@@ -7,9 +7,13 @@
 
 ## tl;dr 
 
-We need to decompose our system a little bit. Right now we have poorly defined integrations between different components
+We need to decompose our system a little bit. Right now we have poorly defined integrations between different components.
 
 ## Problem Statement
+
+cellxgene as a system has grown in complexity, and the product roadmap calls for further features and scaling requirements. As part of that process parts of the
+original system design naturally become suboptimal. Below this is discussed in three parts: an overview of the current architecture, problems that exist today,
+and issues we'll need to address soon as the system grows.
 
 #### Current Architecture
 
@@ -38,7 +42,8 @@ id\_token to get a user id so they can figure out who owns what.
 
 Explorer components:
 1. Frontend React app implementing the UI.
-1. A load balancer listening at api.cellxgene.cziscience.com/cellxgene/
+1. A Cloudfront distribution.
+1. A load balancer listening at receiving origin requests from Cloudfront.
 1. A target group of EC2 instances handling requests from the load balancer.
 1. An S3 bucket that holds datasets serialized in a TileDB format we call "cxg" as well as serialized user annotations.
 1. An Aurora DB that maps (user, dataset) -> serialized user annotations.
@@ -54,8 +59,8 @@ The FE makes three kinds of requests:
 1. Recording annotations. When a user in authenticated, the FE can send a PUT request to record annotations of some cells and associate that with the user. The
    instance that receives the requests serializes it in cxg format in the bucket and updates the DB.
 
-A fair bit of responsiveness and a reasonable time-to-interactive relies on flatbuffer efficiency and caching. Also the compute capability is pretty limited
-by what a single processor can do before the request times out.
+A fair bit of responsiveness and a reasonable time-to-interactive relies on flatbuffer efficiency and caching, both in the target group instances and in the
+CDN. Also the compute capability is pretty limited by what a single processor can do before the request times out.
 
 The user is identified by the user id ("sub") from the decoded id\_token from auth0.
 
@@ -67,7 +72,8 @@ currently just something like `s3://hosted-cellxgene-prod`.
 
 Portal components:
 1. Frontend Gatsby app implementing the UI.
-1. API Gateway that directs API requests to Lambda functions.
+1. A Cloudfront distribution
+1. API Gateway that receives API requests from Cloudfront and directs them to Lambda functions.
 1. A Fargate deployment that runs upload/conversion/validation jobs.
 1. An S3 bucket that stores files associated with datasets.
 1. An Aurora DB that stores information about datasets, collections, and their associated files.
@@ -95,12 +101,14 @@ cxg.
 
 - Explorer caching is mostly broken
 
-Previously, many requests from the Explorer could be served out of the in-memory cache of the instances. And the caching implementation could be pretty
-straightforward because the underlying data was immutable, so no invalidation logic was needed, and we could scale horizontally without introducing much
-complexity.
+Previously, many requests from the Explorer could be served out of the in-memory cache of the instances or from Cloudfront. And the caching implementation
+could be pretty straightforward because the underlying data was immutable, so no invalidation logic was needed, and we could scale horizontally without
+introducing much complexity.
 
 With user annotations enabled, the underlying data is no longer immutable. So now most requests require a full round trip to the database because there's never
-any way to know that a cached response is still valid. And reasoning about horizontal scaling is much harder, as we need to handle data consistency.
+any way to know that a cached response is still valid. And reasoning about horizontal scaling is much harder, as we need to handle data consistency. This
+probably leads to particularly serious performance degradation for clients outside North America, as few of there requests can be served out of nearby POPs
+anymore.
 
 User annotations is a key new feature for the Explorer, but the core value proposition has always been performance, and we should work hard to avoid trading any
 of that away.
@@ -108,8 +116,14 @@ of that away.
 * 99th %ile load time for the Portal is like 20 seconds.
 
 The page is ~500kb worth of requests, and it's just absurd. I think Cloudfront actually makes it worse. You get a better median because of CDN cache hits, but
-then that lambdas get cold, and the tail is so slow. Chalice is probably not the framework for our access patterns.
+then the lambdas get cold, and the tail is so slow. Chalice is probably not the framework for our access patterns.
 
 ## Proposed Architecture
 
 ![Proposed Architecture](imgs/proposed_architecture.svg)
+
+### Explorer Changes
+
+#### Split User-specific, Mutable Routes
+
+We can regain caching and scaling in the primary 
