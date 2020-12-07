@@ -40,7 +40,7 @@ Portal responsibilities:
 1. Gathering metadata about collections and datasets.
 
 Both parts implement their own auth, but they both use auth0 with the same client\_id. And there's not much authorization going on, both parts just parse the
-`id\_token` to get a user id so they can figure out who owns what.
+`id_token` to get a user id so they can figure out who owns what.
 
 #### Explorer Details
 
@@ -66,7 +66,7 @@ The FE makes three kinds of requests:
 A fair bit of responsiveness and a reasonable time-to-interactive relies on flatbuffer efficiency and caching, both in the target group instances and in the
 CDN. Also the compute capability is pretty limited by what a single processor can do before the request times out.
 
-The user is identified by the user id ("sub") from the decoded `id\_token` from auth0.
+The user is identified by the user id ("sub") from the decoded `id_token` from auth0.
 
 The Explorer doesn't hold any internal record of what datasets are available or any metadata about them. As part of deployment, it's pointed at on or more
 "dataroots". When it gets a request for a dataset, it does a `s/{base_url}/{dataroot}/` on the url and sees if it finds a cxg there. The dataroot value is
@@ -163,10 +163,73 @@ interfaces and behaviors in the hosted system that can be reproduced on a single
 
 ## Proposed Architecture
 
+Based on the issues above, a modified architecture should achieve a few goals:
+
+1. Segregate responsibilities and clearly define interfaces.
+1. Maximize performance by tailoring infrastructure for different tasks.
+1. Simplify deployment and configuration modifications.
+
+At a high level the proposal is to break down cellxgene into a few more than two services that collaborate to 
+
 ![Proposed Architecture](imgs/proposed_architecture.svg)
 
-### Explorer Changes
+### Restore Caching by Splitting Immutable Routes
 
-#### Split User-specific, Mutable Routes
+The Explorer loads two types of data: immutable data from the original cxg and user-writable data like cell annotations (and soon gene sets). Serving these all
+from of the same routes breaks caching, so we should split this into two kinds of routes. All the original Explorer routes like `/schema` and
+`/obs?annotation_name=...` will serve the immutable data. New routes prefixed by `/user/` will serve the user-writable data.
 
-We can regain caching and scaling in the primary 
+With this change, all the data that the backend served prior to the annotations feature can be cached again, with HTTP caching in the browser and CDN and in the
+instances' side caches. Note that this means that discovery of different annotations has to occur in different routes as well. So `/schema` would return only
+the immutable annotations while `/user/obs/schema` would return any user annotations.
+
+### Investigate Architecture for Writable Services
+
+The current architecture serving the user-writable data is largely an extension of the storage and wire format used for the immutable data and the database used
+by the Portal.
+
+A few things to consider:
+1. Latency when accessing immutable data outside of North America can be mitigated by Cloudfront, but that doesn't do anything for writes or uncachable reads.
+   So it's pretty plausible that user annotation UX is pretty poor once you get too far from Oregon right now.
+1. The immutable data has optimizations for reading arbitrary subsets of sparse 2D arrays of floats. User annotations are mostly lists of integers read and
+   written all at once.
+1. User annotation data isn't really very "relational". You're mostly doing key-value lookups with `["user"]["dataset"]`.
+
+### Combine Auth Concerns and Push Into AWS
+
+To support authorization that works across the Portal and Explorer, we need to factor out auth concerns into its own service where permissions to different
+collections and datasets are maintained.
+
+AWS will actually do a lot of the auth work that we're currently handling ourselves in either Portal Lambdas or Explorer EB instances. For example ALBs will
+[authenticate users via OIDC](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html). And a combination of
+Cognito and Lambda@Edge will [authenticate users as they hit
+Cloudfront](https://aws.amazon.com/blogs/networking-and-content-delivery/authorizationedge-how-to-use-lambdaedge-and-json-web-tokens-to-enhance-web-application-security/).
+Using AWS is attractive as it reduces the amount of code we have to write and maintain. And the Lambda@Edge solution may be especially attractive as it may
+enable authorization without breaking Cloudfront caching. We don't want requests to have to make a roundtrip to Oregon just to check if the user has access to a
+particular resource. 
+
+### Create Config Service to Mediate Bewteen Explorer and Portal
+
+The Explorer pulls a lot of config information of the the `/config` endpoint. This includes some parameters and limits that determine Explorer behavior as well
+as dataset metadata like the page title or what text to put in the info drawer. The information in the `/config` endpoint comes from Explorer config file(s) and
+the cxg written by the Portal. The lifecycle of the config information matches neither the lifecycle of a Explorer deployment or a cxg, so we should pull this
+data out into its own service.
+
+This is especially important for the information like `corpora_props` and `displayNames` that's currently in the config response. This is pulled out of the cxg,
+so it depends on the metadata schema and can only be modified at cxg write-time. It would be better if it were pulled from some other source that the Portal
+could update more regularly. Moreover, the contract between the Explorer and the config service needs to focus on just what the Explorer needs to accurately
+display data. For example, the Explorer currently hard codes that the `publication_doi` and `preprint_doi` fields should be displayed in a special way with a
+label "DOI" and "Preprint DOI". This is information that should live in the config service.
+
+### Compute Tier
+
+We need to add a compute service that handles bigger compute tasks than the current EB instances can. This is a complex feature that will be designed and
+implemented over H1.
+
+### Use Cloudfront as a Reverse Proxy to Continue Desktop Support
+
+One concern about making the hosted backend more complex is not breaking the desktop version of the Explorer. Any more complex routing of requests that occurs
+in the hosted version are all going to have to go the the same place in the desktop version: the local server. This shouldn't be too hard to maintain since
+everything in the hosted version is sitting behind CloudFront, which can proxy all these different routes. So in the hosted version, `/config` happens to go to
+a different service than `/obs`. But the Explorer doesn't need to know about this, it just hits the URL and CloudFront handles it. So in the desktop version of
+the Explorer, these requests can all just go to the local server.
